@@ -1,126 +1,123 @@
+import { useMemo, useState } from "react";
 import "./styles.css";
-
-const project = {
-  "sourceNo": 9,
-  "id": "hxyfront-62007",
-  "port": 62007,
-  "title": "植物标本馆入库",
-  "domain": "植物标本馆",
-  "prompt": "开发一个植物标本馆压制标本入库前端项目，工作人员可以录入采集号、物种名称、采集地点、海拔、生境描述、采集人、压制状态、鉴定状态和馆藏位置。页面需要有入库队列、鉴定状态筛选、采集地点信息卡、馆藏柜位记录和单份标本详情页。",
-  "palette": [
-    "#166534",
-    "#0f766e",
-    "#ca8a04"
-  ],
-  "metrics": [
-    "入库队列",
-    "待鉴定",
-    "已上柜",
-    "采集点"
-  ],
-  "filters": [
-    "待压制",
-    "待鉴定",
-    "已入库",
-    "需补照"
-  ],
-  "fields": [
-    "采集号",
-    "物种名称",
-    "采集地点",
-    "海拔",
-    "生境描述",
-    "馆藏位置"
-  ],
-  "records": [
-    [
-      "HX-240615-01",
-      "槭属待定",
-      "海拔1420m",
-      "待鉴定"
-    ],
-    [
-      "HX-240615-08",
-      "蕨类",
-      "阴湿沟谷",
-      "已压制"
-    ],
-    [
-      "HX-240616-03",
-      "菊科",
-      "柜位B-12-04",
-      "已入库"
-    ]
-  ]
-};
+import type { FilterKey } from "./types";
+import { FILTERS, specimenStage, useStore } from "./store";
+import { useQueueGroups } from "./store";
+import { IntakeForm } from "./IntakeForm";
+import { SiteCards } from "./SiteCards";
+import { Queue } from "./Queue";
+import { CabinetLog } from "./CabinetLog";
+import { Detail } from "./Detail";
+import { AllocateModal } from "./AllocateModal";
 
 function App() {
+  const { state, dispatch } = useStore();
+  const groups = useQueueGroups(state);
+  const [allocating, setAllocating] = useState<string | null>(null);
+
+  const metrics = useMemo(() => {
+    const inQueue = state.specimens.filter((s) => !s.cabinet).length;
+    const identifying = state.specimens.filter(
+      (s) => specimenStage(s, state.history) === "identifying"
+    ).length;
+    const stored = state.specimens.filter((s) => s.cabinet).length;
+    return [
+      { label: "入库队列", value: inQueue },
+      { label: "待鉴定", value: identifying },
+      { label: "已上柜", value: stored },
+      { label: "采集点", value: state.sites.length },
+    ];
+  }, [state.specimens, state.sites]);
+
+  const selected = state.specimens.find((s) => s.id === state.selectedId);
+
   return (
     <main className="app">
       <section className="hero">
-        <p>{project.id} · 源提示词{project.sourceNo} · Port {project.port}</p>
-        <h1>{project.title}</h1>
-        <span>{project.prompt}</span>
+        <p>hxyfront-62007 · 植物标本馆 · Port 62007</p>
+        <h1>压制标本入库</h1>
+        <span>
+          同一采集号复份共享鉴定结论并分散上柜；采集地点卡登记海拔区间，越界禁止入库。
+          所有队列、筛选、柜位记录与详情仅写入浏览器本地，刷新后保留。
+        </span>
       </section>
 
       <section className="metrics">
-        {project.metrics.map((metric: string, index: number) => (
-          <article key={metric}>
-            <small>{metric}</small>
-            <strong>{[86, 14, 7, 32][index] ?? 12}</strong>
+        {metrics.map((metric) => (
+          <article key={metric.label}>
+            <small>{metric.label}</small>
+            <strong>{metric.value}</strong>
           </article>
         ))}
       </section>
 
-      <section className="workspace">
-        <aside className="panel">
-          <h2>{project.domain}筛选</h2>
-          <div className="chips">
-            {project.filters.map((item: string) => (
-              <button key={item}>{item}</button>
-            ))}
-          </div>
-        </aside>
-
-        <section className="panel form-panel">
-          <div className="heading">
-            <div>
-              <p>专业字段</p>
-              <h2>新增记录</h2>
-            </div>
-            <button className="primary">保存草稿</button>
-          </div>
-          <div className="field-grid">
-            {project.fields.map((field: string) => (
-              <label key={field}>
-                <span>{field}</span>
-                <input placeholder={"填写" + field} />
-              </label>
-            ))}
-          </div>
-        </section>
-      </section>
-
-      <section className="panel">
-        <div className="heading">
-          <div>
-            <p>历史记录</p>
-            <h2>近期工作台</h2>
-          </div>
-          <button>导出摘要</button>
-        </div>
-        <div className="records">
-          {project.records.map((record: string[], index: number) => (
-            <article key={record.join("-")}>
-              <b>{String(index + 1).padStart(2, "0")}</b>
-              <div>
-                <h3>{record[0]}</h3>
-                <p>{record.slice(1).join(" · ")}</p>
+      {selected ? (
+        <Detail
+          state={state}
+          dispatch={dispatch}
+          onAllocate={(no) => setAllocating(no)}
+          onBack={() => dispatch({ type: "SELECT", id: null })}
+        />
+      ) : (
+        <>
+          <section className="workspace">
+            <aside className="panel">
+              <h2>鉴定状态筛选</h2>
+              <div className="chips">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    className={state.filter === f.key ? "active" : ""}
+                    onClick={() =>
+                      dispatch({ type: "SET_FILTER", filter: f.key as FilterKey })
+                    }
+                  >
+                    {f.label}
+                  </button>
+                ))}
               </div>
-            </article>
-          ))}
-        </div>
-      </section>
+              <p className="filter-note">
+                同号复份成组展示；不符当前筛选的复份置灰。
+              </p>
+              <button
+                className="reset-btn"
+                onClick={() => {
+                  if (
+                    window.confirm("确定恢复演示数据？本地记录将被清空。")
+                  ) {
+                    dispatch({ type: "RESET" });
+                    setAllocating(null);
+                  }
+                }}
+              >
+                恢复演示数据
+              </button>
+            </aside>
+
+            <IntakeForm state={state} dispatch={dispatch} />
+          </section>
+
+          <Queue
+            state={state}
+            groups={groups}
+            dispatch={dispatch}
+            onAllocate={(no) => setAllocating(no)}
+          />
+
+          <div className="lower-grid">
+            <CabinetLog state={state} dispatch={dispatch} />
+            <SiteCards state={state} dispatch={dispatch} />
+          </div>
+        </>
+      )}
+
+      <AllocateModal
+        key={allocating ?? "none"}
+        state={state}
+        dispatch={dispatch}
+        collectionNo={allocating}
+        onClose={() => setAllocating(null)}
+      />
     </main>
   );
 }
