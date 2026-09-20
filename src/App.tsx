@@ -1,126 +1,136 @@
+import { useMemo, useState } from "react";
 import "./styles.css";
+import type { OpResult, FilterKey } from "./types";
+import { FILTER_KEYS, matchesFilter } from "./types";
+import { useStore } from "./store";
+import IntakeForm from "./components/IntakeForm";
+import LocalityCards from "./components/LocalityCards";
+import QueueBoard from "./components/QueueBoard";
+import CabinetBoard from "./components/CabinetBoard";
+import DetailDrawer from "./components/DetailDrawer";
 
-const project = {
-  "sourceNo": 9,
-  "id": "hxyfront-62007",
-  "port": 62007,
-  "title": "植物标本馆入库",
-  "domain": "植物标本馆",
-  "prompt": "开发一个植物标本馆压制标本入库前端项目，工作人员可以录入采集号、物种名称、采集地点、海拔、生境描述、采集人、压制状态、鉴定状态和馆藏位置。页面需要有入库队列、鉴定状态筛选、采集地点信息卡、馆藏柜位记录和单份标本详情页。",
-  "palette": [
-    "#166534",
-    "#0f766e",
-    "#ca8a04"
-  ],
-  "metrics": [
-    "入库队列",
-    "待鉴定",
-    "已上柜",
-    "采集点"
-  ],
-  "filters": [
-    "待压制",
-    "待鉴定",
-    "已入库",
-    "需补照"
-  ],
-  "fields": [
-    "采集号",
-    "物种名称",
-    "采集地点",
-    "海拔",
-    "生境描述",
-    "馆藏位置"
-  ],
-  "records": [
-    [
-      "HX-240615-01",
-      "槭属待定",
-      "海拔1420m",
-      "待鉴定"
-    ],
-    [
-      "HX-240615-08",
-      "蕨类",
-      "阴湿沟谷",
-      "已压制"
-    ],
-    [
-      "HX-240616-03",
-      "菊科",
-      "柜位B-12-04",
-      "已入库"
-    ]
-  ]
-};
+interface Toast {
+  id: number;
+  result: OpResult;
+}
 
 function App() {
+  const store = useStore();
+  const [filter, setFilter] = useState<FilterKey>("全部");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const notify = (result: OpResult) => {
+    const id = Date.now() + Math.random();
+    setToasts((t) => [...t, { id, result }]);
+    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5200);
+  };
+
+  const stats = useMemo(() => {
+    const inQueue = store.specimens.filter((s) => s.cabinetId === null).length;
+    const pendingIdent = store.specimens.filter((s) => s.ident !== "已鉴定").length;
+    const shelved = store.specimens.filter((s) => s.cabinetId !== null).length;
+    return {
+      inQueue,
+      pendingIdent,
+      shelved,
+      localities: store.localities.length,
+    };
+  }, [store.specimens, store.localities.length]);
+
+  const filterCounts = useMemo(() => {
+    return FILTER_KEYS.map((key) => ({
+      key,
+      count: key === "全部" ? store.specimens.length : store.specimens.filter((s) => matchesFilter(s, key)).length,
+    }));
+  }, [store.specimens]);
+
   return (
     <main className="app">
       <section className="hero">
-        <p>{project.id} · 源提示词{project.sourceNo} · Port {project.port}</p>
-        <h1>{project.title}</h1>
-        <span>{project.prompt}</span>
+        <p>hxyfront-62007 · 植物标本馆 · 压制标本入库台</p>
+        <h1>植物标本馆入库</h1>
+        <span>
+          同一采集号的多份复份共享鉴定结论、分散占用不同柜位；柜位占用或压制未完成时整次分配拒绝。
+          采集地点卡登记海拔区间，越界标本禁止入库。全部状态仅保存在浏览器本地，刷新后保留。
+        </span>
       </section>
 
       <section className="metrics">
-        {project.metrics.map((metric: string, index: number) => (
-          <article key={metric}>
-            <small>{metric}</small>
-            <strong>{[86, 14, 7, 32][index] ?? 12}</strong>
-          </article>
-        ))}
+        <article>
+          <small>待上柜（队列）</small>
+          <strong>{stats.inQueue}</strong>
+        </article>
+        <article>
+          <small>待鉴定</small>
+          <strong>{stats.pendingIdent}</strong>
+        </article>
+        <article>
+          <small>已上柜</small>
+          <strong>{stats.shelved}</strong>
+        </article>
+        <article>
+          <small>采集点</small>
+          <strong>{stats.localities}</strong>
+        </article>
       </section>
 
       <section className="workspace">
-        <aside className="panel">
-          <h2>{project.domain}筛选</h2>
-          <div className="chips">
-            {project.filters.map((item: string) => (
-              <button key={item}>{item}</button>
+        <aside className="panel filter-panel">
+          <h2>状态筛选</h2>
+          <p className="muted">队列与柜位记录同步按此筛选，点击标本可进入详情。</p>
+          <div className="chips vertical">
+            {filterCounts.map(({ key, count }) => (
+              <button
+                key={key}
+                className={filter === key ? "active" : ""}
+                onClick={() => setFilter(key)}
+              >
+                {key}
+                <em>{count}</em>
+              </button>
             ))}
+          </div>
+          <div className="filter-foot">
+            <hr />
+            <button className="ghost-danger" onClick={store.resetDemo}>
+              重置为演示数据
+            </button>
+            <small>状态仅存于 localStorage</small>
           </div>
         </aside>
 
-        <section className="panel form-panel">
-          <div className="heading">
-            <div>
-              <p>专业字段</p>
-              <h2>新增记录</h2>
-            </div>
-            <button className="primary">保存草稿</button>
-          </div>
-          <div className="field-grid">
-            {project.fields.map((field: string) => (
-              <label key={field}>
-                <span>{field}</span>
-                <input placeholder={"填写" + field} />
-              </label>
-            ))}
-          </div>
-        </section>
+        <div className="main-col">
+          <IntakeForm store={store} notify={notify} />
+        </div>
       </section>
 
-      <section className="panel">
-        <div className="heading">
-          <div>
-            <p>历史记录</p>
-            <h2>近期工作台</h2>
+      <LocalityCards store={store} notify={notify} />
+
+      <div className="boards">
+        <QueueBoard store={store} filter={filter} openDetail={setSelectedId} notify={notify} />
+        <CabinetBoard store={store} filter={filter} openDetail={setSelectedId} />
+      </div>
+
+      <DetailDrawer
+        store={store}
+        specimenId={selectedId}
+        onClose={() => setSelectedId(null)}
+        onSelect={setSelectedId}
+        notify={notify}
+      />
+
+      <div className="toasts">
+        {toasts.map(({ id, result }) => (
+          <div key={id} className={`toast ${result.ok ? "ok" : "fail"}`}>
+            <strong>{result.ok ? "操作成功" : "操作被拒绝"}</strong>
+            {result.message && <p>{result.message}</p>}
+            {result.errors.map((e) => (
+              <p key={e}>· {e}</p>
+            ))}
           </div>
-          <button>导出摘要</button>
-        </div>
-        <div className="records">
-          {project.records.map((record: string[], index: number) => (
-            <article key={record.join("-")}>
-              <b>{String(index + 1).padStart(2, "0")}</b>
-              <div>
-                <h3>{record[0]}</h3>
-                <p>{record.slice(1).join(" · ")}</p>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+        ))}
+      </div>
     </main>
   );
 }
